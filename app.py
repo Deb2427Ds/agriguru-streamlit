@@ -50,4 +50,3 @@ if location:
 st.subheader("📈 Sample Mandi Prices")
 
 @st.cache_data
-
