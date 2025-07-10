@@ -1,16 +1,15 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 import requests
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 
 st.set_page_config(page_title="AgriGuru Lite", layout="centered")
 
 st.title("🌾 AgriGuru Lite – Smart Farming Assistant")
 
-# --- Weather Forecast Section ---
+# ---------------- WEATHER FORECAST ----------------
 st.subheader("🌦️ 5-Day Weather Forecast")
-api_key = "0a16832edf4445ce698396f2fa890ddd"  # Your OpenWeatherMap API Key
+api_key = "0a16832edf4445ce698396f2fa890ddd"  # Replace with your OpenWeatherMap API Key
 
 location = st.text_input("Enter your City/District (for weather)")
 
@@ -29,7 +28,7 @@ if location:
     else:
         st.warning("Couldn't fetch weather. Please check the city name.")
 
-# --- Basic Rule-Based Crop Suggestion ---
+# ---------------- RULE-BASED CROP RECOMMENDATION ----------------
 st.subheader("🧠 Rule-Based Crop Recommendation")
 
 season = st.selectbox("Select the Crop Season", ["Kharif", "Rabi", "Zaid"])
@@ -46,9 +45,10 @@ def recommend_crops(season, soil):
         return ["Millets", "Pulses", "Sunflower"]
 
 if season and soil:
-    st.success("Recommended Crops: " + ", ".join(recommend_crops(season, soil)))
+    rule_based = recommend_crops(season, soil)
+    st.success("Recommended Crops: " + ", ".join(rule_based))
 
-# --- ML-Based Crop Recommendation ---
+# ---------------- ML-BASED CROP RECOMMENDATION ----------------
 st.subheader("🤖 ML-Based Crop Recommendation (via CSV + Random Forest)")
 
 @st.cache_data
@@ -63,7 +63,22 @@ y = df["label"]
 model = RandomForestClassifier()
 model.fit(X, y)
 
-# Take user inputs
+# Crop-to-Season Mapping
+crop_seasons = {
+    "rice": "Kharif", "maize": "Kharif", "jute": "Kharif", "cotton": "Kharif",
+    "kidneybeans": "Kharif", "pigeonpeas": "Kharif", "blackgram": "Kharif", 
+    "mothbeans": "Kharif", "mungbean": "Kharif",
+
+    "wheat": "Rabi", "gram": "Rabi", "lentil": "Rabi", "chickpea": "Rabi",
+    "grapes": "Rabi", "apple": "Rabi", "orange": "Rabi", "pomegranate": "Rabi",
+
+    "watermelon": "Zaid", "muskmelon": "Zaid", "cucumber": "Zaid",
+
+    "banana": "All Season", "mango": "All Season", "papaya": "All Season",
+    "coconut": "All Season", "coffee": "All Season"
+}
+
+st.markdown("**Enter Soil and Climate Data for ML Prediction**")
 n = st.number_input("Nitrogen (N)", min_value=0.0)
 p = st.number_input("Phosphorus (P)", min_value=0.0)
 k = st.number_input("Potassium (K)", min_value=0.0)
@@ -75,4 +90,6 @@ rainfall = st.number_input("Rainfall (mm)", min_value=0.0)
 if st.button("Predict Best Crop"):
     input_data = [[n, p, k, temp, humidity, ph, rainfall]]
     prediction = model.predict(input_data)
-    st.success(f"🌱 Recommended Crop: {prediction[0]}")
+    predicted_crop = prediction[0]
+    season = crop_seasons.get(predicted_crop, "Unknown")
+    st.success(f"🌱 Predicted Crop: **{predicted_crop}** ({season} season)")
