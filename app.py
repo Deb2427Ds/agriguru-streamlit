@@ -49,4 +49,4 @@ if location:
 # --- Mandi Prices Section ---
 st.subheader("📈 Sample Mandi Prices")
 
-@st.cache_data
+@st.cache
