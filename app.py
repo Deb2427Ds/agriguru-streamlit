@@ -29,7 +29,7 @@ if season and soil:
 
 # --- Weather Forecast Section ---
 st.subheader("🌦️ 5-Day Weather Forecast")
-api_key = "0a16832edf4445ce698396f2fa890ddd"  # Replace this with your real API key
+api_key = "0a16832edf4445ce698396f2fa890ddd"  # Replace this with your real key
 
 def get_weather(city):
     url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={api_key}&units=metric"
@@ -50,3 +50,13 @@ if location:
 st.subheader("📈 Sample Mandi Prices")
 
 @st.cache
+def load_prices():
+    url = "https://raw.githubusercontent.com/deboparnadas/agri-datasets/main/mandi_prices_sample.csv"
+    return pd.read_csv(url)
+
+df = load_prices()
+commodity = st.selectbox("Select Crop", df['Commodity'].unique())
+state = st.selectbox("Select State", df['State'].unique())
+result = df[(df['Commodity'] == commodity) & (df['State'] == state)]
+
+st.write(result[['Market', 'Modal Price', 'Minimum Price', 'Maximum Price', 'Date']].head())
