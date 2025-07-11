@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 from sklearn.preprocessing import LabelEncoder
 
 st.set_page_config(page_title="AgriGuru Lite", layout="centered")
@@ -27,7 +27,6 @@ except FileNotFoundError:
 st.subheader("🌦️ 5-Day Weather Forecast")
 weather_api_key = "0a16832edf4445ce698396f2fa890ddd"
 
-# Map district to valid city name (basic fallback)
 district_to_city = {
     "MALDAH": "Malda",
     "BARDHAMAN": "Bardhaman",
@@ -36,7 +35,6 @@ district_to_city = {
     "24 PARAGANAS SOUTH": "Diamond Harbour",
     "HOWRAH": "Howrah",
     "KOLKATA": "Kolkata"
-    # Add more as needed
 }
 
 def get_weather(city):
@@ -107,15 +105,6 @@ moisture = st.number_input("Moisture (%)", min_value=0.0)
 # ---------------- ML MODEL: FILTERED BY DISTRICT CROPS ----------------
 st.subheader("🌿 ML-Powered Crop Recommendation (Filtered by District)")
 
-from xgboost import XGBClassifier
-
-district_crops = prod_df[
-    (prod_df["District_Name"] == selected_district) &
-    (prod_df["State_Name"] == selected_state)
-]["Crop"].dropna().unique()
-
-st.markdown(f"### 🌿 { _('ML-Powered Crop Recommendation (Filtered by District)') }")
-
 @st.cache_data
 def load_soil_dataset():
     df = pd.read_csv("data_core.csv")
@@ -124,59 +113,35 @@ def load_soil_dataset():
     features = ["Nitrogen", "Phosphorous", "Potassium", "Temparature", "Humidity", "Moisture", "soil_encoded"]
     X = df[features]
     y = df["Crop Type"]
-    
-    model = XGBClassifier(
-    n_estimators=100,
-    learning_rate=0.1,
-    max_depth=5,
-    use_label_encoder=False,
-    eval_metric='mlogloss'
-)
-
+    model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
     model.fit(X, y)
     return model, le, df
 
 try:
     soil_model, soil_encoder, soil_df = load_soil_dataset()
+    soil_input = st.selectbox("🧪 Select Soil Type for ML", soil_df["Soil Type"].unique())
 
-    # Show translated soil types for selection
-    soil_display = [_(s) for s in soil_df["Soil Type"].unique()]
-    selected_soil_display = st.selectbox(_("🧪 Select Soil Type for ML"), soil_display)
-    selected_soil = soil_df["Soil Type"].unique()[soil_display.index(selected_soil_display)]
-
-    if st.button(_("🌱 Predict Best Crops in District")):
-        encoded_soil = soil_encoder.transform([selected_soil])[0]
+    if st.button("Predict Best Crops in District"):
+        encoded_soil = soil_encoder.transform([soil_input])[0]
         input_data = [[n, p, k, temp, humidity, moisture, encoded_soil]]
 
-        # Translate district/state to English (in case user selected in another language)
-        try:
-            selected_district_en = GoogleTranslator(source=target_lang, target='en').translate(selected_district)
-            selected_state_en = GoogleTranslator(source=target_lang, target='en').translate(selected_state)
-        except:
-            selected_district_en = selected_district
-            selected_state_en = selected_state
-
-        # Filter crops grown in selected district
         district_crops = prod_df[
-            (prod_df["District_Name"].str.lower() == selected_district_en.lower()) &
-            (prod_df["State_Name"].str.lower() == selected_state_en.lower())
+            (prod_df["District_Name"] == district_filter) &
+            (prod_df["State_Name"] == state_filter)
         ]["Crop"].dropna().unique()
 
-        # Predict probabilities for all crops
         proba = soil_model.predict_proba(input_data)[0]
         labels = soil_model.classes_
         crop_scores = {label: prob for label, prob in zip(labels, proba)}
 
-        # Keep only crops from this district
         recommended = [(crop, crop_scores[crop]) for crop in district_crops if crop in crop_scores]
         recommended = sorted(recommended, key=lambda x: x[1], reverse=True)[:5]
 
         if recommended:
-            st.success(_("✅ Top Recommended Crops Grown in Your District:"))
+            st.success("✅ Top Recommended Crops Grown in Your District:")
             for crop, score in recommended:
-                st.write(f"🌿 {_(crop)} — {_('Confidence')}: {score * 100:.1f}%")
+                st.write(f"🌱 **{crop}** – Confidence: {score:.2f}")
         else:
-            st.warning(_("❌ No matching crops from prediction found in this district."))
-
+            st.warning("❌ No matching crops from prediction found in this district.")
 except FileNotFoundError:
-    st.warning(_("⚠ Please upload data_core.csv."))
+    st.warning("Please upload `data_core.csv`.")
