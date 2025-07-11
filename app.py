@@ -65,10 +65,10 @@ st.subheader("🧪 Advanced Prediction (from data_core.csv)")
 def load_soil_dataset():
     df = pd.read_csv("data_core.csv")
     le = LabelEncoder()
-    df["soil_encoded"] = le.fit_transform(df["soil_type"])
-    features = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall", "soil_encoded"]
+    df["soil_encoded"] = le.fit_transform(df["Soil Type"])
+    features = ["Nitrogen", "Phosphorous", "Potassium", "Temparature", "Humidity", "Moisture", "soil_encoded"]
     X = df[features]
-    y = df["label"]
+    y = df["Crop Type"]
     model = RandomForestClassifier()
     model.fit(X, y)
     return model, le, df
