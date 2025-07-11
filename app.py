@@ -3,6 +3,12 @@ import pandas as pd
 import requests
 from catboost import CatBoostClassifier
 from sklearn.preprocessing import LabelEncoder
+import streamlit as st
+import pandas as pd
+from xgboost import XGBClassifier
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.preprocessing import LabelEncoder
+from deep_translator import GoogleTranslator
 
 st.set_page_config(page_title="AgriGuru Lite", layout="centered")
 st.title("🌾 AgriGuru Lite – Smart Farming Assistant")
@@ -104,13 +110,7 @@ moisture = st.number_input("Moisture (%)", min_value=0.0)
 # ---------------- CATBOOST MODEL ----------------
 st.subheader("🌿 ML-Powered Crop Recommendation (CatBoost + District Filter)")
 
-@st.cache_data
-import streamlit as st
-import pandas as pd
-from xgboost import XGBClassifier
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.preprocessing import LabelEncoder
-from deep_translator import GoogleTranslator
+
 
 @st.cache_data
 def load_soil_dataset():
