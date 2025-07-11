@@ -131,7 +131,7 @@ def load_soil_dataset():
     )
 
     # Use 'sigmoid' method here for calibration to avoid errors
-    calibrated_model = CalibratedClassifierCV(base_estimator=base_model, method='sigmoid', cv=5)
+    calibrated_model = CalibratedClassifierCV(estimator=base_model, method='sigmoid', cv=5)
     calibrated_model.fit(X, y)
 
     return calibrated_model, le, df
