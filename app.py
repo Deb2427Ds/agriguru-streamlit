@@ -100,7 +100,7 @@ def get_crop_prices():
     params = {
         "api-key": "579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b",
         "format": "json",
-        "limit": 100
+        "limit": 500
     }
     try:
         res = requests.get(url, params=params)
