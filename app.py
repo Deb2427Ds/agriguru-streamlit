@@ -11,22 +11,22 @@ st.title("🌾 AgriGuru Lite – Smart Farming Assistant")
 st.subheader("🌦️ 5-Day Weather Forecast")
 weather_api_key = "0a16832edf4445ce698396f2fa890ddd"
 
-location = st.text_input("Enter your City/District (for weather)")
+district = st.text_input("Enter your District (for weather)")
 
-def get_weather(city):
-    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={weather_api_key}&units=metric"
+def get_weather(place):
+    url = f"http://api.openweathermap.org/data/2.5/forecast?q={place}&appid={weather_api_key}&units=metric"
     res = requests.get(url)
     if res.status_code == 200:
         return res.json()['list'][:5]
     return None
 
-if location:
-    forecast = get_weather(location)
+if district:
+    forecast = get_weather(district)
     if forecast:
         for day in forecast:
             st.write(f"{day['dt_txt']} | 🌡️ {day['main']['temp']}°C | {day['weather'][0]['description']}")
     else:
-        st.warning("Couldn't fetch weather. Please check the city name.")
+        st.warning("Couldn't fetch weather. Please check the district name.")
 
 # ---------------- RULE-BASED CROP RECOMMENDATION ----------------
 st.subheader("🧠 Rule-Based Crop Recommendation")
@@ -57,8 +57,8 @@ temp = st.number_input("Temparature (°C)", min_value=0.0)
 humidity = st.number_input("Humidity (%)", min_value=0.0)
 moisture = st.number_input("Moisture (%)", min_value=0.0)
 
-# ---------------- ADVANCED ML PREDICTION (Soil + Nutrients) ----------------
-st.subheader("🌿 Smart Crop Prediction Based on Soil + Climate (data_core.csv)")
+# ---------------- ADVANCED ML PREDICTION ----------------
+st.subheader("🌿 ML Prediction Based on Soil + Climate (from data_core.csv)")
 
 @st.cache_data
 def load_soil_dataset():
@@ -84,8 +84,8 @@ try:
 except FileNotFoundError:
     st.warning("Please make sure data_core.csv is uploaded.")
 
-# ---------------- CROP PRODUCTION DATA VIEW (District-based) ----------------
-st.subheader("📊 Crop Production Explorer (from crop_production.csv)")
+# ---------------- DISTRICT-BASED PRODUCTION DATA ----------------
+st.subheader("📊 Crop Production by District (from crop_production.csv)")
 
 @st.cache_data
 def load_production_data():
@@ -94,18 +94,20 @@ def load_production_data():
 try:
     prod_df = load_production_data()
 
-    state_filter = st.selectbox("Select State", prod_df["State"].dropna().unique())
+    state_filter = st.selectbox("Select State", prod_df["State_Name"].dropna().unique())
+    district_filter = st.selectbox("Select District", prod_df[prod_df["State_Name"] == state_filter]["District_Name"].dropna().unique())
     season_filter = st.selectbox("Select Season", prod_df["Season"].dropna().unique())
 
     filtered = prod_df[
-        (prod_df["State"] == state_filter) &
+        (prod_df["State_Name"] == state_filter) &
+        (prod_df["District_Name"] == district_filter) &
         (prod_df["Season"] == season_filter)
     ]
 
     if not filtered.empty:
-        st.success(f"📍 Showing crops in **{state_filter}** during **{season_filter}**:")
-        st.dataframe(filtered[["District", "Crop", "Area", "Production", "Yield"]])
+        st.success(f"Showing crops in **{district_filter}, {state_filter}** during **{season_filter}**:")
+        st.dataframe(filtered[["Crop_Year", "Crop", "Area", "Production"]])
     else:
-        st.warning("No data found for selected state and season.")
+        st.warning("No data found for selected filters.")
 except FileNotFoundError:
     st.warning("Please make sure crop_production.csv is uploaded.")
