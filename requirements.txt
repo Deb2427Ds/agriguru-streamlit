@@ -1,7 +1,5 @@
 streamlit
-xgboost==1.7.6
-scikit-learn
 pandas
-matplotlib
-numpy
-deep-translator
+scikit-learn
+requests
+catboost
