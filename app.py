@@ -1,4 +1,4 @@
-import streamlit as st  
+import streamlit as st
 import pandas as pd
 import requests
 from sklearn.ensemble import RandomForestClassifier
@@ -7,7 +7,7 @@ from sklearn.preprocessing import LabelEncoder
 st.set_page_config(page_title="AgriGuru Lite", layout="centered")
 st.title("🌾 AgriGuru Lite – Smart Farming Assistant")
 
-# ---------------- CROP PRODUCTION HEADERS ----------------
+# ---------------- LOAD PRODUCTION DATA ----------------
 @st.cache_data
 def load_production_data():
     return pd.read_csv("crop_production.csv")
@@ -21,28 +21,41 @@ try:
 
     st.markdown(f"### 📍 Selected Region: **{district_filter}, {state_filter}** | Season: **{season_filter}**")
 except FileNotFoundError:
-    st.warning("Please make sure `crop_production.csv` is uploaded.")
+    st.warning("Please upload `crop_production.csv`.")
 
 # ---------------- WEATHER FORECAST ----------------
 st.subheader("🌦️ 5-Day Weather Forecast")
 weather_api_key = "0a16832edf4445ce698396f2fa890ddd"
 
-def get_weather(place):
-    url = f"http://api.openweathermap.org/data/2.5/forecast?q={place}&appid={weather_api_key}&units=metric"
+# Map district to valid city name (basic fallback)
+district_to_city = {
+    "MALDAH": "Malda",
+    "BARDHAMAN": "Bardhaman",
+    "NADIA": "Krishnanagar",
+    "24 PARAGANAS NORTH": "Barasat",
+    "24 PARAGANAS SOUTH": "Diamond Harbour",
+    "HOWRAH": "Howrah",
+    "KOLKATA": "Kolkata"
+    # Add more as needed
+}
+
+def get_weather(city):
+    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={weather_api_key}&units=metric"
     res = requests.get(url)
     if res.status_code == 200:
         return res.json()['list'][:5]
     return None
 
 if district_filter:
-    forecast = get_weather(district_filter)
+    city_query = district_to_city.get(district_filter.upper(), district_filter)
+    forecast = get_weather(city_query)
     if forecast:
         for day in forecast:
             st.write(f"{day['dt_txt']} | 🌡️ {day['main']['temp']}°C | {day['weather'][0]['description']}")
     else:
-        st.warning("Couldn't fetch weather. Please check the district name.")
+        st.warning("⚠️ Weather unavailable. Try entering a nearby city manually.")
 
-# ---------------- SOIL INFO BUTTONS ----------------
+# ---------------- SOIL TYPE BUTTONS ----------------
 st.subheader("🧱 Explore Suitable Crops by Soil Type")
 
 soil_crop_map = {
@@ -91,8 +104,8 @@ temp = st.number_input("Temparature (°C)", min_value=0.0)
 humidity = st.number_input("Humidity (%)", min_value=0.0)
 moisture = st.number_input("Moisture (%)", min_value=0.0)
 
-# ---------------- ML MODEL: data_core.csv ----------------
-st.subheader("🌿 ML-Based Crop Prediction (data_core.csv)")
+# ---------------- ML MODEL: FILTERED BY DISTRICT CROPS ----------------
+st.subheader("🌿 ML-Powered Crop Recommendation (Filtered by District)")
 
 @st.cache_data
 def load_soil_dataset():
@@ -108,12 +121,32 @@ def load_soil_dataset():
 
 try:
     soil_model, soil_encoder, soil_df = load_soil_dataset()
-    soil_input = st.selectbox("🧪 Select Soil Type for ML Prediction", soil_df["Soil Type"].unique())
+    soil_input = st.selectbox("🧪 Select Soil Type for ML", soil_df["Soil Type"].unique())
 
-    if st.button("Predict Best Crop"):
+    if st.button("Predict Best Crops in District"):
         encoded_soil = soil_encoder.transform([soil_input])[0]
         input_data = [[n, p, k, temp, humidity, moisture, encoded_soil]]
-        crop_prediction = soil_model.predict(input_data)[0]
-        st.success(f"🌱 ML Predicted Crop: **{crop_prediction}**")
+
+        # Get all unique crops from the district
+        district_crops = prod_df[
+            (prod_df["District_Name"] == district_filter) &
+            (prod_df["State_Name"] == state_filter)
+        ]["Crop"].dropna().unique()
+
+        # Get ML predicted probabilities for all crops
+        proba = soil_model.predict_proba(input_data)[0]
+        labels = soil_model.classes_
+        crop_scores = {label: prob for label, prob in zip(labels, proba)}
+
+        # Sort only crops that are grown in the district
+        recommended = [(crop, crop_scores[crop]) for crop in district_crops if crop in crop_scores]
+        recommended = sorted(recommended, key=lambda x: x[1], reverse=True)[:5]
+
+        if recommended:
+            st.success("✅ Top Recommended Crops Grown in Your District:")
+            for crop, score in recommended:
+                st.write(f"🌱 **{crop}** – Confidence: {score:.2f}")
+        else:
+            st.warning("❌ No matching crops from prediction found in this district.")
 except FileNotFoundError:
-    st.warning("Please make sure `data_core.csv` is uploaded.")
+    st.warning("Please upload `data_core.csv`.")
