@@ -105,50 +105,99 @@ moisture = st.number_input("Moisture (%)", min_value=0.0)
 st.subheader("🌿 ML-Powered Crop Recommendation (CatBoost + District Filter)")
 
 @st.cache_data
-def load_catboost_model():
-    df = pd.read_csv("data_core.csv")
-    df = df.dropna(subset=["Crop Type"])
-    
-    # Encode soil and crop type
-    soil_encoder = LabelEncoder()
-    df["soil_encoded"] = soil_encoder.fit_transform(df["Soil Type"])
-    crop_encoder = LabelEncoder()
-    df["crop_encoded"] = crop_encoder.fit_transform(df["Crop Type"])
+import streamlit as st
+import pandas as pd
+from xgboost import XGBClassifier
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.preprocessing import LabelEncoder
+from deep_translator import GoogleTranslator
 
+@st.cache_data
+def load_soil_dataset():
+    df = pd.read_csv("data_core.csv")
+    le = LabelEncoder()
+    df["soil_encoded"] = le.fit_transform(df["Soil Type"])
+    
     features = ["Nitrogen", "Phosphorous", "Potassium", "Temparature", "Humidity", "Moisture", "soil_encoded"]
     X = df[features]
-    y = df["crop_encoded"]
+    y = df["Crop Type"]
 
-    model = CatBoostClassifier(verbose=0)
-    model.fit(X, y)
+    base_model = XGBClassifier(
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=5,
+        use_label_encoder=False,
+        eval_metric='mlogloss'
+    )
 
-    return model, soil_encoder, crop_encoder, df
+    # Use 'sigmoid' method here for calibration to avoid errors
+    calibrated_model = CalibratedClassifierCV(base_estimator=base_model, method='sigmoid', cv=5)
+    calibrated_model.fit(X, y)
+
+    return calibrated_model, le, df
 
 try:
-    model, soil_encoder, crop_encoder, soil_df = load_catboost_model()
-    soil_input = st.selectbox("🧪 Select Soil Type for ML", soil_df["Soil Type"].unique())
+    soil_model, soil_encoder, soil_df = load_soil_dataset()
 
-    if st.button("Predict Best Crops in District"):
-        encoded_soil = soil_encoder.transform([soil_input])[0]
+    # District and state inputs (example placeholders, replace as needed)
+    selected_district = st.text_input("Enter District Name")
+    selected_state = st.text_input("Enter State Name")
+
+    # Example input values for features (replace with actual inputs or sliders)
+    n = st.number_input("Nitrogen", min_value=0.0, max_value=100.0, value=10.0)
+    p = st.number_input("Phosphorous", min_value=0.0, max_value=100.0, value=10.0)
+    k = st.number_input("Potassium", min_value=0.0, max_value=100.0, value=10.0)
+    temp = st.number_input("Temperature", min_value=0.0, max_value=50.0, value=25.0)
+    humidity = st.number_input("Humidity", min_value=0.0, max_value=100.0, value=50.0)
+    moisture = st.number_input("Moisture", min_value=0.0, max_value=100.0, value=30.0)
+
+    # Show soil types for selection, translated if needed
+    soil_display = list(soil_df["Soil Type"].unique())
+    selected_soil_display = st.selectbox("🧪 Select Soil Type for ML", soil_display)
+    selected_soil = selected_soil_display
+
+    if st.button("🌱 Predict Best Crops in District"):
+
+        encoded_soil = soil_encoder.transform([selected_soil])[0]
         input_data = [[n, p, k, temp, humidity, moisture, encoded_soil]]
 
-        district_crops = prod_df[
-            (prod_df["District_Name"] == district_filter) &
-            (prod_df["State_Name"] == state_filter)
-        ]["Crop"].dropna().unique()
+        # Try translating district/state to English for matching (optional)
+        try:
+            selected_district_en = GoogleTranslator(source='auto', target='en').translate(selected_district)
+            selected_state_en = GoogleTranslator(source='auto', target='en').translate(selected_state)
+        except Exception:
+            selected_district_en = selected_district
+            selected_state_en = selected_state
 
-        proba = model.predict_proba(input_data)[0]
-        labels = crop_encoder.inverse_transform(range(len(proba)))
+        # Filter crops grown in selected district/state from your prod_df DataFrame
+        # NOTE: prod_df should be loaded elsewhere in your app before this block
+        district_crops = []
+        if "prod_df" in st.session_state:
+            prod_df = st.session_state.prod_df
+            district_crops = prod_df[
+                (prod_df["District_Name"].str.lower() == selected_district_en.lower()) &
+                (prod_df["State_Name"].str.lower() == selected_state_en.lower())
+            ]["Crop"].dropna().unique()
+        else:
+            st.warning("⚠ prod_df is not loaded. Please load your production data.")
+
+        # Predict probabilities
+        proba = soil_model.predict_proba(input_data)[0]
+        labels = soil_model.classes_
         crop_scores = {label: prob for label, prob in zip(labels, proba)}
 
+        # Keep only crops from the district
         recommended = [(crop, crop_scores[crop]) for crop in district_crops if crop in crop_scores]
         recommended = sorted(recommended, key=lambda x: x[1], reverse=True)[:5]
 
         if recommended:
             st.success("✅ Top Recommended Crops Grown in Your District:")
             for crop, score in recommended:
-                st.write(f"🌱 **{crop}** – Confidence: {score:.2f}")
+                st.write(f"🌿 {crop} — Confidence: {score * 100:.1f}%")
         else:
             st.warning("❌ No matching crops from prediction found in this district.")
+
 except FileNotFoundError:
-    st.warning("Please upload `data_core.csv`.")
+    st.warning("⚠ Please upload data_core.csv.")
+except Exception as e:
+    st.error(f"Unexpected error: {e}")
