@@ -48,18 +48,17 @@ if season and soil:
     rule_based = recommend_crops(season, soil)
     st.success("Recommended Crops: " + ", ".join(rule_based))
 
-# ---------------- USER INPUTS FOR ML MODELS ----------------
-st.markdown("**Enter Soil and Climate Data for ML Models**")
-n = st.number_input("Nitrogen (N)", min_value=0.0)
-p = st.number_input("Phosphorus (P)", min_value=0.0)
-k = st.number_input("Potassium (K)", min_value=0.0)
-temp = st.number_input("Temperature (°C)", min_value=0.0)
+# ---------------- USER INPUT FOR ML ----------------
+st.markdown("**📥 Enter Soil and Climate Data**")
+n = st.number_input("Nitrogen", min_value=0.0)
+p = st.number_input("Phosphorous", min_value=0.0)
+k = st.number_input("Potassium", min_value=0.0)
+temp = st.number_input("Temparature (°C)", min_value=0.0)
 humidity = st.number_input("Humidity (%)", min_value=0.0)
-ph = st.number_input("Soil pH", min_value=0.0)
-rainfall = st.number_input("Rainfall (mm)", min_value=0.0)
+moisture = st.number_input("Moisture (%)", min_value=0.0)
 
-# ---------------- ADVANCED MODEL: SOIL TYPE INCLUDED ----------------
-st.subheader("🧪 Advanced Prediction (from data_core.csv)")
+# ---------------- ADVANCED ML PREDICTION (Soil + Nutrients) ----------------
+st.subheader("🌿 Smart Crop Prediction Based on Soil + Climate (data_core.csv)")
 
 @st.cache_data
 def load_soil_dataset():
@@ -75,18 +74,18 @@ def load_soil_dataset():
 
 try:
     soil_model, soil_encoder, soil_df = load_soil_dataset()
-    soil_input = st.selectbox("Select Soil Type for ML Model", soil_df["soil_type"].unique())
+    soil_input = st.selectbox("Select Soil Type for ML Prediction", soil_df["Soil Type"].unique())
 
-    if st.button("Predict Crop (Soil-Aware Model)"):
+    if st.button("Predict Best Crop"):
         encoded_soil = soil_encoder.transform([soil_input])[0]
-        input_data = [[n, p, k, temp, humidity, ph, rainfall, encoded_soil]]
-        soil_prediction = soil_model.predict(input_data)[0]
-        st.success(f"🌿 Predicted Crop (with Soil Type): **{soil_prediction}**")
+        input_data = [[n, p, k, temp, humidity, moisture, encoded_soil]]
+        crop_prediction = soil_model.predict(input_data)[0]
+        st.success(f"🌱 ML Predicted Crop: **{crop_prediction}**")
 except FileNotFoundError:
     st.warning("Please make sure data_core.csv is uploaded.")
 
-# ---------------- PRODUCTION DATA VIEWER (crop_production.csv) ----------------
-st.subheader("📊 Crop Production Insights (from crop_production.csv)")
+# ---------------- CROP PRODUCTION DATA VIEW (District-based) ----------------
+st.subheader("📊 Crop Production Explorer (from crop_production.csv)")
 
 @st.cache_data
 def load_production_data():
@@ -95,8 +94,8 @@ def load_production_data():
 try:
     prod_df = load_production_data()
 
-    state_filter = st.selectbox("Filter by State", prod_df["State"].dropna().unique())
-    season_filter = st.selectbox("Filter by Season", prod_df["Season"].dropna().unique())
+    state_filter = st.selectbox("Select State", prod_df["State"].dropna().unique())
+    season_filter = st.selectbox("Select Season", prod_df["Season"].dropna().unique())
 
     filtered = prod_df[
         (prod_df["State"] == state_filter) &
@@ -104,9 +103,9 @@ try:
     ]
 
     if not filtered.empty:
-        st.success(f"Showing crops produced in **{state_filter}** during **{season_filter}**:")
+        st.success(f"📍 Showing crops in **{state_filter}** during **{season_filter}**:")
         st.dataframe(filtered[["District", "Crop", "Area", "Production", "Yield"]])
     else:
-        st.warning("No data found for the selected filters.")
+        st.warning("No data found for selected state and season.")
 except FileNotFoundError:
     st.warning("Please make sure crop_production.csv is uploaded.")
