@@ -48,33 +48,8 @@ if season and soil:
     rule_based = recommend_crops(season, soil)
     st.success("Recommended Crops: " + ", ".join(rule_based))
 
-# ---------------- BASIC ML-BASED CROP RECOMMENDATION ----------------
-st.subheader("🤖 ML-Based Crop Recommendation (Basic Model)")
-
-@st.cache_data
-def load_crop_data():
-    return pd.read_csv("Crop_recommendation.csv")
-
-df = load_crop_data()
-
-X = df.drop("label", axis=1)
-y = df["label"]
-
-model = RandomForestClassifier()
-model.fit(X, y)
-
-crop_seasons = {
-    "rice": "Kharif", "maize": "Kharif", "jute": "Kharif", "cotton": "Kharif",
-    "kidneybeans": "Kharif", "pigeonpeas": "Kharif", "blackgram": "Kharif", 
-    "mothbeans": "Kharif", "mungbean": "Kharif",
-    "wheat": "Rabi", "gram": "Rabi", "lentil": "Rabi", "chickpea": "Rabi",
-    "grapes": "Rabi", "apple": "Rabi", "orange": "Rabi", "pomegranate": "Rabi",
-    "watermelon": "Zaid", "muskmelon": "Zaid", "cucumber": "Zaid",
-    "banana": "All Season", "mango": "All Season", "papaya": "All Season",
-    "coconut": "All Season", "coffee": "All Season"
-}
-
-st.markdown("**Enter Soil and Climate Data for ML Prediction**")
+# ---------------- USER INPUTS FOR ML MODELS ----------------
+st.markdown("**Enter Soil and Climate Data for ML Models**")
 n = st.number_input("Nitrogen (N)", min_value=0.0)
 p = st.number_input("Phosphorus (P)", min_value=0.0)
 k = st.number_input("Potassium (K)", min_value=0.0)
@@ -83,78 +58,8 @@ humidity = st.number_input("Humidity (%)", min_value=0.0)
 ph = st.number_input("Soil pH", min_value=0.0)
 rainfall = st.number_input("Rainfall (mm)", min_value=0.0)
 
-if st.button("Predict Best Crop"):
-    input_data = [[n, p, k, temp, humidity, ph, rainfall]]
-    prediction = model.predict(input_data)
-    predicted_crop = prediction[0]
-    season_match = crop_seasons.get(predicted_crop, "Unknown")
-    st.success(f"🌱 Predicted Crop: **{predicted_crop}** ({season_match} season)")
-
-# ---------------- PRICE-BASED CROP RECOMMENDATION ----------------
-st.subheader("💰 Price-Based Crop Recommendation (Mandi API)")
-
-user_price = st.number_input("Enter your expected crop price (₹ per quintal)", min_value=0)
-
-def get_crop_prices():
-    url = "https://api.data.gov.in/resource/f9efb243-4f43-4941-a181-0a6e54c5f295"
-    params = {
-        "api-key": "579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b",
-        "format": "json",
-        "limit": 500
-    }
-    try:
-        res = requests.get(url, params=params)
-        data = res.json()
-        prices = []
-        for entry in data['records']:
-            try:
-                modal_price = int(entry['modal_price'])
-                crop = entry['commodity']
-                if abs(modal_price - user_price) <= 500:
-                    prices.append((crop, modal_price, entry['state'], entry['market']))
-            except:
-                continue
-        return prices
-    except:
-        return []
-
-if st.button("Suggest Crops by Price"):
-    if user_price <= 0:
-        st.warning("Please enter a valid price.")
-    else:
-        matching_crops = get_crop_prices()
-        if matching_crops:
-            st.success("🌾 Crops with prices within ₹500 of your input:")
-            for crop, price, state, market in matching_crops[:10]:
-                st.write(f"**{crop}** – ₹{price} (State: {state}, Market: {market})")
-        else:
-            st.warning("No crops found within the given price range.")
-
-# ---------------- BUDGET-FILTERED CROP SUGGESTION ----------------
-st.subheader("📉 Predict Crop Within Budget (from dataset.csv)")
-
-@st.cache_data
-def load_priced_dataset():
-    return pd.read_csv("dataset.csv")
-
-max_budget = st.number_input("Enter your maximum budget per quintal (₹)", min_value=0)
-
-try:
-    priced_df = load_priced_dataset()
-    if st.button("Predict Crop Within Budget"):
-        input_data = [[n, p, k, temp, humidity, ph, rainfall]]
-        predicted_crop = model.predict(input_data)[0]
-        filtered = priced_df[(priced_df['label'] == predicted_crop) & (priced_df['price'] <= max_budget)]
-        if not filtered.empty:
-            st.success(f"✅ You can grow **{predicted_crop}** within your budget!")
-            st.dataframe(filtered)
-        else:
-            st.warning(f"❌ No data found for **{predicted_crop}** within your budget.")
-except FileNotFoundError:
-    st.warning("Please make sure dataset.csv is uploaded to the app folder.")
-
 # ---------------- ADVANCED MODEL: SOIL TYPE INCLUDED ----------------
-st.subheader("🧪 Advanced Prediction (Includes Soil Type from data_core.csv)")
+st.subheader("🧪 Advanced Prediction (from data_core.csv)")
 
 @st.cache_data
 def load_soil_dataset():
@@ -172,10 +77,36 @@ try:
     soil_model, soil_encoder, soil_df = load_soil_dataset()
     soil_input = st.selectbox("Select Soil Type for ML Model", soil_df["soil_type"].unique())
 
-    if st.button("Predict Crop (Soil-aware Model)"):
+    if st.button("Predict Crop (Soil-Aware Model)"):
         encoded_soil = soil_encoder.transform([soil_input])[0]
         input_data = [[n, p, k, temp, humidity, ph, rainfall, encoded_soil]]
         soil_prediction = soil_model.predict(input_data)[0]
         st.success(f"🌿 Predicted Crop (with Soil Type): **{soil_prediction}**")
 except FileNotFoundError:
-    st.warning("Please make sure data_core.csv is uploaded to the app folder.")
+    st.warning("Please make sure data_core.csv is uploaded.")
+
+# ---------------- PRODUCTION DATA VIEWER (crop_production.csv) ----------------
+st.subheader("📊 Crop Production Insights (from crop_production.csv)")
+
+@st.cache_data
+def load_production_data():
+    return pd.read_csv("crop_production.csv")
+
+try:
+    prod_df = load_production_data()
+
+    state_filter = st.selectbox("Filter by State", prod_df["State"].dropna().unique())
+    season_filter = st.selectbox("Filter by Season", prod_df["Season"].dropna().unique())
+
+    filtered = prod_df[
+        (prod_df["State"] == state_filter) &
+        (prod_df["Season"] == season_filter)
+    ]
+
+    if not filtered.empty:
+        st.success(f"Showing crops produced in **{state_filter}** during **{season_filter}**:")
+        st.dataframe(filtered[["District", "Crop", "Area", "Production", "Yield"]])
+    else:
+        st.warning("No data found for the selected filters.")
+except FileNotFoundError:
+    st.warning("Please make sure crop_production.csv is uploaded.")
