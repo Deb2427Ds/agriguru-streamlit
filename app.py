@@ -91,7 +91,7 @@ if st.button("Predict Best Crop"):
     st.success(f"🌱 Predicted Crop: **{predicted_crop}** ({season} season)")
 
 # ---------------- PRICE-BASED CROP RECOMMENDATION ----------------
-st.subheader("💰 Price-Based Crop Recommendation")
+st.subheader("💰 Price-Based Crop Recommendation (Mandi Price API)")
 
 user_price = st.number_input("Enter your expected crop price (₹ per quintal)", min_value=0)
 
@@ -110,7 +110,7 @@ def get_crop_prices():
             try:
                 modal_price = int(entry['modal_price'])
                 crop = entry['commodity']
-                if modal_price >= user_price:
+                if abs(modal_price - user_price) <= 500:
                     prices.append((crop, modal_price, entry['state'], entry['market']))
             except:
                 continue
@@ -124,8 +124,35 @@ if st.button("Suggest Crops by Price"):
     else:
         matching_crops = get_crop_prices()
         if matching_crops:
-            st.success("🌾 Crops with prices at or above your input:")
+            st.success("🌾 Crops with prices within ₹500 of your input:")
             for crop, price, state, market in matching_crops[:10]:
                 st.write(f"**{crop}** – ₹{price} (State: {state}, Market: {market})")
         else:
-            st.warning("No crops found with modal prices above the given value.")
+            st.warning("No crops found within the given price range.")
+
+# ---------------- ML + BUDGET FILTER ----------------
+st.subheader("🧪 Predict Crops That Fit Your Budget (from uploaded dataset)")
+
+@st.cache_data
+def load_priced_dataset():
+    return pd.read_csv("dataset.csv")
+
+priced_df = load_priced_dataset()
+
+max_budget = st.number_input("Enter your maximum budget per quintal (₹)", min_value=0)
+
+if st.button("Predict Crop Within Budget"):
+    input_data = [[n, p, k, temp, humidity, ph, rainfall]]
+    predicted_crop = model.predict(input_data)[0]
+    
+    # Filter dataset based on predicted crop and price
+    filtered = priced_df[
+        (priced_df['label'] == predicted_crop) &
+        (priced_df['price'] <= max_budget)
+    ]
+
+    if not filtered.empty:
+        st.success(f"✅ You can grow **{predicted_crop}** within your budget!")
+        st.dataframe(filtered)
+    else:
+        st.warning(f"❌ No data found for **{predicted_crop}** within your budget.")
