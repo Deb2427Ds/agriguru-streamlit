@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
 
 st.set_page_config(page_title="AgriGuru Lite", layout="centered")
 st.title("🌾 AgriGuru Lite – Smart Farming Assistant")
@@ -47,8 +48,8 @@ if season and soil:
     rule_based = recommend_crops(season, soil)
     st.success("Recommended Crops: " + ", ".join(rule_based))
 
-# ---------------- ML-BASED CROP RECOMMENDATION ----------------
-st.subheader("🤖 ML-Based Crop Recommendation (via CSV + Random Forest)")
+# ---------------- BASIC ML-BASED CROP RECOMMENDATION ----------------
+st.subheader("🤖 ML-Based Crop Recommendation (Basic Model)")
 
 @st.cache_data
 def load_crop_data():
@@ -62,7 +63,6 @@ y = df["label"]
 model = RandomForestClassifier()
 model.fit(X, y)
 
-# Crop-to-Season Mapping
 crop_seasons = {
     "rice": "Kharif", "maize": "Kharif", "jute": "Kharif", "cotton": "Kharif",
     "kidneybeans": "Kharif", "pigeonpeas": "Kharif", "blackgram": "Kharif", 
@@ -87,11 +87,11 @@ if st.button("Predict Best Crop"):
     input_data = [[n, p, k, temp, humidity, ph, rainfall]]
     prediction = model.predict(input_data)
     predicted_crop = prediction[0]
-    season = crop_seasons.get(predicted_crop, "Unknown")
-    st.success(f"🌱 Predicted Crop: **{predicted_crop}** ({season} season)")
+    season_match = crop_seasons.get(predicted_crop, "Unknown")
+    st.success(f"🌱 Predicted Crop: **{predicted_crop}** ({season_match} season)")
 
 # ---------------- PRICE-BASED CROP RECOMMENDATION ----------------
-st.subheader("💰 Price-Based Crop Recommendation (Mandi Price API)")
+st.subheader("💰 Price-Based Crop Recommendation (Mandi API)")
 
 user_price = st.number_input("Enter your expected crop price (₹ per quintal)", min_value=0)
 
@@ -130,29 +130,52 @@ if st.button("Suggest Crops by Price"):
         else:
             st.warning("No crops found within the given price range.")
 
-# ---------------- ML + BUDGET FILTER ----------------
-st.subheader("🧪 Predict Crops That Fit Your Budget (from uploaded dataset)")
+# ---------------- BUDGET-FILTERED CROP SUGGESTION ----------------
+st.subheader("📉 Predict Crop Within Budget (from dataset.csv)")
 
 @st.cache_data
 def load_priced_dataset():
     return pd.read_csv("dataset.csv")
 
-priced_df = load_priced_dataset()
-
 max_budget = st.number_input("Enter your maximum budget per quintal (₹)", min_value=0)
 
-if st.button("Predict Crop Within Budget"):
-    input_data = [[n, p, k, temp, humidity, ph, rainfall]]
-    predicted_crop = model.predict(input_data)[0]
-    
-    # Filter dataset based on predicted crop and price
-    filtered = priced_df[
-        (priced_df['label'] == predicted_crop) &
-        (priced_df['price'] <= max_budget)
-    ]
+try:
+    priced_df = load_priced_dataset()
+    if st.button("Predict Crop Within Budget"):
+        input_data = [[n, p, k, temp, humidity, ph, rainfall]]
+        predicted_crop = model.predict(input_data)[0]
+        filtered = priced_df[(priced_df['label'] == predicted_crop) & (priced_df['price'] <= max_budget)]
+        if not filtered.empty:
+            st.success(f"✅ You can grow **{predicted_crop}** within your budget!")
+            st.dataframe(filtered)
+        else:
+            st.warning(f"❌ No data found for **{predicted_crop}** within your budget.")
+except FileNotFoundError:
+    st.warning("Please make sure dataset.csv is uploaded to the app folder.")
 
-    if not filtered.empty:
-        st.success(f"✅ You can grow **{predicted_crop}** within your budget!")
-        st.dataframe(filtered)
-    else:
-        st.warning(f"❌ No data found for **{predicted_crop}** within your budget.")
+# ---------------- ADVANCED MODEL: SOIL TYPE INCLUDED ----------------
+st.subheader("🧪 Advanced Prediction (Includes Soil Type from data_core.csv)")
+
+@st.cache_data
+def load_soil_dataset():
+    df = pd.read_csv("data_core.csv")
+    le = LabelEncoder()
+    df["soil_encoded"] = le.fit_transform(df["soil_type"])
+    features = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall", "soil_encoded"]
+    X = df[features]
+    y = df["label"]
+    model = RandomForestClassifier()
+    model.fit(X, y)
+    return model, le, df
+
+try:
+    soil_model, soil_encoder, soil_df = load_soil_dataset()
+    soil_input = st.selectbox("Select Soil Type for ML Model", soil_df["soil_type"].unique())
+
+    if st.button("Predict Crop (Soil-aware Model)"):
+        encoded_soil = soil_encoder.transform([soil_input])[0]
+        input_data = [[n, p, k, temp, humidity, ph, rainfall, encoded_soil]]
+        soil_prediction = soil_model.predict(input_data)[0]
+        st.success(f"🌿 Predicted Crop (with Soil Type): **{soil_prediction}**")
+except FileNotFoundError:
+    st.warning("Please make sure data_core.csv is uploaded to the app folder.")
