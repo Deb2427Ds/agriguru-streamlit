@@ -129,7 +129,7 @@ def load_soil_dataset():
     )
 
     # Wrap with CalibratedClassifierCV
-    calibrated_model = CalibratedClassifierCV(base_estimator=base_model, method='isotonic', cv=5)
+    calibrated_model = CalibratedClassifierCV(base_estimator=base_model, method='sigmoid', cv=5)
     calibrated_model.fit(X, y)
 
     return calibrated_model, le, df
