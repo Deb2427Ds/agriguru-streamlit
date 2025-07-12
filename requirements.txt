@@ -1,7 +1,5 @@
-streamlit
-xgboost==1.7.6
-scikit-learn
+streamlit>=1.24
 pandas
-matplotlib
-numpy
-deep-translator
+requests
+scikit-learn
+deep-translator==1.11.4
