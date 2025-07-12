@@ -31,7 +31,6 @@ st.sidebar.title("🌐 Language Settings")
 selected_lang = st.sidebar.selectbox("Select Language", list(languages.keys()))
 target_lang = languages[selected_lang]
 
-# Translation with caching
 translator_cache = {}
 def _(text):
     if target_lang == "en":
@@ -49,104 +48,23 @@ def _(text):
 st.markdown(f"<h1 style='text-align: center; color: #006400;'>{_('🌾 AgriGuru Lite – Smart Farming Assistant')}</h1>", unsafe_allow_html=True)
 st.markdown("<hr style='border: 2px solid #228B22;'>", unsafe_allow_html=True)
 
-# ---------------- LOAD PRODUCTION DATA ----------------
-@st.cache_data
-def load_production_data():
-    return pd.read_csv("crop_production.csv")
-
-try:
-    prod_df = load_production_data()
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        states = sorted(prod_df["State_Name"].dropna().unique())
-        state_display = [_(s) for s in states]
-        selected_state_display = st.selectbox(_("🌍 Select State"), state_display)
-        selected_state = states[state_display.index(selected_state_display)]
-
-    with col2:
-        districts = sorted(prod_df[prod_df["State_Name"] == selected_state]["District_Name"].dropna().unique())
-        district_display = [_(d) for d in districts]
-        selected_district_display = st.selectbox(_("🏜 Select District"), district_display)
-        selected_district = districts[district_display.index(selected_district_display)]
-
-    with col3:
-        seasons = sorted(prod_df["Season"].dropna().unique())
-        season_display = [_(s) for s in seasons]
-        selected_season_display = st.selectbox(_("🗓 Select Season"), season_display)
-        selected_season = seasons[season_display.index(selected_season_display)]
-
-    st.markdown(f"<h4 style='color:#2E8B57;'>📍 {('Selected Region')}: <b>{selected_district}, {selected_state}</b> | {('Season')}: <b>{selected_season}</b></h4>", unsafe_allow_html=True)
-except FileNotFoundError:
-    st.warning(_("⚠ Please upload crop_production.csv."))
-
-# ---------------- WEATHER FORECAST ----------------
-st.markdown("### ⛅ " + _("Weather Forecast"))
-weather_api_key = "0a16832edf4445ce698396f2fa890ddd"
-
-def get_weather(city):
-    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={weather_api_key}&units=metric"
-    res = requests.get(url)
-    if res.status_code == 200:
-        return res.json()['list'][:5]
-    return None
-
-if 'selected_district' in locals():
-    try:
-        district_en = GoogleTranslator(source=target_lang, target='en').translate(selected_district)
-    except:
-        district_en = selected_district
-
-    forecast = get_weather(district_en)
-    if forecast:
-        for day in forecast:
-            st.info(f"🗕 {day['dt_txt']} | 🌡 {day['main']['temp']}°C | ☁ {_(day['weather'][0]['description'])}")
-    else:
-        st.warning(_("⚠ Weather unavailable. Try a nearby city."))
-
-st.markdown("<hr>", unsafe_allow_html=True)
-
-# ---------------- SUITABLE CROPS BY SOIL TYPE ----------------
-st.markdown(f"### 🧱 { _('Explore Suitable Crops by Soil Type') }")
-
-soil_crop_map = {
-    "Alluvial": ["Rice", "Sugarcane", "Wheat", "Jute"],
-    "Black": ["Cotton", "Soybean", "Sorghum"],
-    "Red": ["Millets", "Groundnut", "Potato"],
-    "Laterite": ["Cashew", "Tea", "Tapioca"],
-    "Sandy": ["Melons", "Pulses", "Groundnut"],
-    "Clayey": ["Rice", "Wheat", "Lentil"],
-    "Loamy": ["Maize", "Barley", "Sugarcane"]
-}
-
-soil_display_map = {_(s): s for s in soil_crop_map}
-soil_cols = st.columns(3)
-for i, translated_soil in enumerate(soil_display_map):
-    with soil_cols[i % 3]:
-        if st.button(translated_soil, key=f"soil_{translated_soil}"):
-            crops = [_(c) for c in soil_crop_map[soil_display_map[translated_soil]]]
-            st.success("🌾 " + _(f"Suitable Crops: {', '.join(crops)}"))
-
-st.markdown("<hr>", unsafe_allow_html=True)
-
-# ---------------- USER INPUT FOR ML ----------------
-st.markdown(f"### 📊 { _('Enter Soil and Climate Data (for ML Prediction)') }")
-col1, col2, col3 = st.columns(3)
-with col1:
-    n = st.number_input(_("Nitrogen"), min_value=0.0, key="n")
-    p = st.number_input(_("Phosphorous"), min_value=0.0, key="p")
-with col2:
-    k = st.number_input(_("Potassium"), min_value=0.0, key="k")
-    temp = st.number_input(_("Temparature (°C)"), min_value=0.0, key="temp")
-with col3:
-    humidity = st.number_input(_("Humidity (%)"), min_value=0.0, key="humidity")
-    moisture = st.number_input(_("Moisture (%)"), min_value=0.0, key="moisture")
-
-# ---------------- ML MODEL ----------------
-st.markdown(f"### 🌿 { _('ML-Powered Crop Recommendation (Filtered by District)') }")
-
+# ---------------- ML MODEL LOADING ----------------
 @st.cache_data
 def load_soil_dataset():
     df = pd.read_csv("data_core.csv")
+
+    # Rename for price clarity
+    df.rename(columns={"Production (tonnes)": "Crop Price"}, inplace=True)
+
+    # Clean price values
+    df["Crop Price"] = (
+        df["Crop Price"].astype(str)
+        .str.replace(",", "")
+        .str.extract(r"(\d+)")
+        .fillna(0)
+        .astype(int)
+    )
+
     le = LabelEncoder()
     df["soil_encoded"] = le.fit_transform(df["Soil Type"])
     features = ["Nitrogen", "Phosphorous", "Potassium", "Temparature", "Humidity", "Moisture", "soil_encoded"]
@@ -156,47 +74,48 @@ def load_soil_dataset():
     model.fit(X, y)
     return model, le, df
 
-# ------- Budget Input Section --------
-st.markdown(f"### 💸 { _('Filter Recommended Crops by Budget') }")
-max_price = st.number_input(_("Enter your maximum crop price (₹ per tonne)"), min_value=0, step=1000, format="%d")
+# ---------------- USER INPUT ----------------
+st.markdown(f"### 📊 { _('Enter Soil and Climate Data') }")
+col1, col2, col3 = st.columns(3)
+with col1:
+    n = st.number_input("Nitrogen", min_value=0.0)
+    p = st.number_input("Phosphorous", min_value=0.0)
+with col2:
+    k = st.number_input("Potassium", min_value=0.0)
+    temp = st.number_input("Temparature (°C)", min_value=0.0)
+with col3:
+    humidity = st.number_input("Humidity (%)", min_value=0.0)
+    moisture = st.number_input("Moisture (%)", min_value=0.0)
 
+st.markdown(f"### 💰 { _('Budget Filter') }")
+max_price = st.number_input(_("Enter Maximum Price per Tonne (₹)"), min_value=0)
+
+# ---------------- PREDICTION ----------------
 try:
-    soil_model, soil_encoder, soil_df = load_soil_dataset()
-    soil_display = [_(s) for s in soil_df["Soil Type"].unique()]
-    selected_soil_display = st.selectbox(_("🧪 Select Soil Type for ML"), soil_display)
-    selected_soil = soil_df["Soil Type"].unique()[soil_display.index(selected_soil_display)]
+    model, encoder, df = load_soil_dataset()
 
-    if st.button(_("🌱 Predict Best Crops in District")):
-        encoded_soil = soil_encoder.transform([selected_soil])[0]
+    soil_display = [_(s) for s in df["Soil Type"].unique()]
+    selected_soil_display = st.selectbox("🧪 Select Soil Type", soil_display)
+    selected_soil = df["Soil Type"].unique()[soil_display.index(selected_soil_display)]
+
+    if st.button("🌱 Predict Best Crops"):
+        encoded_soil = encoder.transform([selected_soil])[0]
         input_data = [[n, p, k, temp, humidity, moisture, encoded_soil]]
-
-        district_crops = prod_df[
-            (prod_df["District_Name"] == selected_district) &
-            (prod_df["State_Name"] == selected_state)
-        ]["Crop"].dropna().unique()
-
-        proba = soil_model.predict_proba(input_data)[0]
-        labels = soil_model.classes_
+        proba = model.predict_proba(input_data)[0]
+        labels = model.classes_
         crop_scores = {label: prob for label, prob in zip(labels, proba)}
 
-        recommended = [(crop, crop_scores[crop]) for crop in district_crops if crop in crop_scores]
-        recommended = sorted(recommended, key=lambda x: x[1], reverse=True)[:5]
+        top_crops = sorted(crop_scores.items(), key=lambda x: x[1], reverse=True)
 
-        price_data = soil_df[['Crop Type', 'Crop Price']].dropna()
-        budget_crops = []
-        for crop, score in recommended:
-            price_row = price_data[price_data['Crop Type'].str.lower() == crop.lower()]
-            if not price_row.empty:
-                price = price_row.iloc[0]['Crop Price']
-                if price <= max_price:
-                    budget_crops.append((crop, score, price))
+        if max_price > 0:
+            price_map = dict(zip(df["Crop Type"], df["Crop Price"]))
+            top_crops = [(c, s) for c, s in top_crops if price_map.get(c, 1e9) <= max_price]
 
-        if budget_crops:
-            st.success(_("🌟 Crops within your budget:"))
-            for crop, score, price in budget_crops:
-                st.write(f"✅ {_(crop)} — ₹{int(price):,} per tonne | { _('Confidence') }: {score:.2%}")
+        if top_crops:
+            st.success("✅ Recommended Crops:")
+            for crop, score in top_crops[:5]:
+                st.write(f"🌿 {crop} — Confidence: {score:.2%} | Price: ₹{price_map[crop]:,}/tonne")
         else:
-            st.info(_("No recommended crops fit your budget. Try increasing the limit."))
-
+            st.warning("❌ No crops match your budget or input conditions.")
 except FileNotFoundError:
-    st.warning(_("⚠ Please upload data_core.csv."))
+    st.warning("⚠ Please upload 'data_core.csv' file in your project directory.")
