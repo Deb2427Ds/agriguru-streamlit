@@ -162,34 +162,53 @@ try:
         encoded_soil = soil_encoder.transform([selected_soil])[0]
         input_data = [[n, p, k, temp, humidity, moisture, encoded_soil]]
 
+        # 1. Get crops grown in selected district/state
         district_crops = prod_df[
             (prod_df["District_Name"] == selected_district) &
             (prod_df["State_Name"] == selected_state)
         ]["Crop"].dropna().unique()
 
+        # 2. Define nutrient similarity scoring
+        def nutrient_score(row):
+            return (
+                -abs(row["Nitrogen"] - n)
+                -abs(row["Phosphorous"] - p)
+                -abs(row["Potassium"] - k)
+            )
+
+        # 3. Filter soil_df to crops grown in district and score by nutrients
+        filtered_df = soil_df[soil_df["Crop Type"].isin(district_crops)].copy()
+        filtered_df["Score"] = filtered_df.apply(nutrient_score, axis=1)
+        best_npk_matches = filtered_df.sort_values("Score", ascending=False).head(15)["Crop Type"].unique()
+
+        # 4. Predict using the model
         proba = soil_model.predict_proba(input_data)[0]
         labels = soil_model.classes_
         crop_scores = {label: prob for label, prob in zip(labels, proba)}
 
+        # 5. Simulate or load prices (currently using Production as proxy)
         price_df = soil_df[["Crop Type", "Production (tonnes)"]].dropna()
         price_df["Clean Price"] = price_df["Production (tonnes)"].replace({
             r',': '', r'[^0-9.]': '', r'-+': ''
         }, regex=True).astype(str)
         price_df["Clean Price"] = pd.to_numeric(price_df["Clean Price"], errors='coerce')
-
         price_map = price_df.dropna().drop_duplicates("Crop Type").set_index("Crop Type")["Clean Price"].to_dict()
 
-        recommended = [(crop, crop_scores[crop], price_map[crop])
-                       for crop in district_crops
-                       if crop in crop_scores and crop in price_map and price_map[crop] <= budget]
-
+        # 6. Final crop filtering and recommendation
+        recommended = [
+            (crop, crop_scores[crop], price_map[crop])
+            for crop in district_crops
+            if crop in crop_scores and crop in price_map
+            and crop in best_npk_matches
+            and price_map[crop] <= budget
+        ]
         recommended = sorted(recommended, key=lambda x: x[1], reverse=True)[:5]
 
         if recommended:
-            st.success(_("✅ Top Recommended Crops Within Your Budget:"))
+            st.success(_("✅ Top Recommended Crops Within Your Budget (based on NPK match):"))
             for crop, score, price in recommended:
-                st.write(f"🌿 {_(crop)} — ₹{price:.0f}/tonne")
+                st.write(f"🌿 {_(crop)} — ₹{price:.0f}/tonne (Confidence: {score*100:.1f}%)")
         else:
-            st.warning(_("❌ No crops found within your budget."))
+            st.warning(_("❌ No crops found within your budget and nutrient match."))
 except FileNotFoundError:
     st.warning(_("⚠ Please upload data_core.csv."))
