@@ -66,7 +66,7 @@ try:
     with col2:
         districts = sorted(prod_df[prod_df["State_Name"] == selected_state]["District_Name"].dropna().unique())
         district_display = [_(d) for d in districts]
-        selected_district_display = st.selectbox(_("🏞 Select District"), district_display)
+        selected_district_display = st.selectbox(_("🏜 Select District"), district_display)
         selected_district = districts[district_display.index(selected_district_display)]
 
     with col3:
@@ -99,7 +99,7 @@ if 'selected_district' in locals():
     forecast = get_weather(district_en)
     if forecast:
         for day in forecast:
-            st.info(f"📅 {day['dt_txt']} | 🌡 {day['main']['temp']}°C | ☁ {_(day['weather'][0]['description'])}")
+            st.info(f"🗕 {day['dt_txt']} | 🌡 {day['main']['temp']}°C | ☁ {_(day['weather'][0]['description'])}")
     else:
         st.warning(_("⚠ Weather unavailable. Try a nearby city."))
 
@@ -156,6 +156,10 @@ def load_soil_dataset():
     model.fit(X, y)
     return model, le, df
 
+# ------- Budget Input Section --------
+st.markdown(f"### 💸 { _('Filter Recommended Crops by Budget') }")
+max_price = st.number_input(_("Enter your maximum crop price (₹ per tonne)"), min_value=0, step=1000, format="%d")
+
 try:
     soil_model, soil_encoder, soil_df = load_soil_dataset()
     soil_display = [_(s) for s in soil_df["Soil Type"].unique()]
@@ -178,11 +182,21 @@ try:
         recommended = [(crop, crop_scores[crop]) for crop in district_crops if crop in crop_scores]
         recommended = sorted(recommended, key=lambda x: x[1], reverse=True)[:5]
 
-        if recommended:
-            st.success(_("✅ Top Recommended Crops Grown in Your District:"))
-            for crop, score in recommended:
-                 st.write(f"🌿 {_(crop)} — {_('Confidence')}")
+        price_data = soil_df[['Crop Type', 'Crop Price']].dropna()
+        budget_crops = []
+        for crop, score in recommended:
+            price_row = price_data[price_data['Crop Type'].str.lower() == crop.lower()]
+            if not price_row.empty:
+                price = price_row.iloc[0]['Crop Price']
+                if price <= max_price:
+                    budget_crops.append((crop, score, price))
+
+        if budget_crops:
+            st.success(_("🌟 Crops within your budget:"))
+            for crop, score, price in budget_crops:
+                st.write(f"✅ {_(crop)} — ₹{int(price):,} per tonne | { _('Confidence') }: {score:.2%}")
         else:
-            st.warning(_("❌ No matching crops from prediction found in this district."))
+            st.info(_("No recommended crops fit your budget. Try increasing the limit."))
+
 except FileNotFoundError:
     st.warning(_("⚠ Please upload data_core.csv."))
