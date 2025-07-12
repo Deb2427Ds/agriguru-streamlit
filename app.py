@@ -96,7 +96,7 @@ if 'selected_district' in locals():
     forecast = get_weather(district_en)
     if forecast:
         for day in forecast:
-            st.info(f"🗕 {day['dt_txt']} | 🌡 {day['main']['temp']}°C | ☁ {_(day['weather'][0]['description'])}")
+            st.info(f"🗕 {day['dt_txt']} | 🌡 {day['main']['temp']} °C | ☁ {_(day['weather'][0]['description'])}")
     else:
         st.warning(_("⚠ Weather unavailable. Try a nearby city."))
 
@@ -146,7 +146,7 @@ def load_soil_dataset():
     features = ["Nitrogen", "Phosphorous", "Potassium", "Temparature", "Humidity", "Moisture", "soil_encoded"]
     X = df[features]
     y = df["Crop Type"]
-    model = RandomForestClassifier()
+    model = RandomForestClassifier(n_estimators=200, max_depth=12, random_state=42)
     model.fit(X, y)
     return model, le, df
 
@@ -171,7 +171,6 @@ try:
         labels = soil_model.classes_
         crop_scores = {label: prob for label, prob in zip(labels, proba)}
 
-        # Clean crop prices and convert to numeric
         price_df = soil_df[["Crop Type", "Production (tonnes)"]].dropna()
         price_df["Clean Price"] = price_df["Production (tonnes)"].replace({
             r',': '', r'[^0-9.]': '', r'-+': ''
@@ -189,7 +188,7 @@ try:
         if recommended:
             st.success(_("✅ Top Recommended Crops Within Your Budget:"))
             for crop, score, price in recommended:
-                st.write(f"🌿 {_(crop)} — ₹{price:.0f}/tonne — {_('Confidence')} {score:.2f}")
+                st.write(f"🌿 {_(crop)} — ₹{price:.0f}/tonne — {_("Confidence")} {score:.2f}")
         else:
             st.warning(_("❌ No crops found within your budget."))
 except FileNotFoundError:
